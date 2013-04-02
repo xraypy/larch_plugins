@@ -1,0 +1,23 @@
+#+TITLE: Larch plugins
+#+AUTHOR: Mauro Rovezzi
+#+EMAIL: mauro.rovezzi@gmail.com
+
+
+* Larch plugins
+
+  This repository contains additional plugins developed for [[http://xraypy.github.com/xraylarch][Larch]]. A a brief description is given in the following, but the best is to read directly the ~__doc__~ strings in the source code. The Python files have a test/example included in the ~__main__~ block, while an additional Larch script, called ~pluginname_test.lar~, does the same with the domain specific language (DSL).
+
+** ~specfile.py~
+
+   To read SPEC files from Certified Scientific Software (http://www.certif.com/)
+
+*** Notes
+    
+    Regarding the Python class to read SPEC files, I have evaluated:
+
+    1) specfilewrapper in PyMca (rewritten in Python from the 'specfile' C class developed at ESRF)
+    2) pyspec ([[http://pythonhosted.org/pyspec/]])
+    3) specparser ([[https://github.com/tpikonen/specparser]])
+    4) the one included in TDL ([[https://github.com/xraypy/tdl]])
+
+    To my opinion, (1) is the best choice for simplicity, versatility and maintenance. (2) is a nice project too but cannot handle motors names that include a dot, as 'Mono.Energy'.

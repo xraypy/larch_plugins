@@ -1,0 +1,10 @@
+#LARCH script to test the specfile plugin
+add_plugin('specfile')
+fname = "specfile_test.dat"
+counter = "arr_hdh_ene"
+signal = "zap_det_dtc"
+monitor = "arr_I02sum"
+seconds = "arr_seconds"
+scan = 3
+g = read_specfile_scan(fname, scan=scan, cntx=counter, csig=signal, cmon=monitor, csec=seconds)
+plot(g.x, g.y)
