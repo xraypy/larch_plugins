@@ -4,6 +4,10 @@
 """
 SpecfileData object to work with SPEC files from Certified Scientific Software (http://www.certif.com/)
 
+Authors
+-------
+- Mauro Rovezzi <mauro.rovezzi@gmail.com>
+
 Requirements
 ------------
 - specfilewrapper from PyMca distribution (http://pymca.sourceforge.net/)
@@ -13,10 +17,6 @@ TODO
 - implement get_map() method to extract a 2D plane, e.g. a RIXS plane
 - better handling the scan types to create specific labels in the larch group
 """
-
-__author__ = "Mauro Rovezzi"
-__email__ = "mauro.rovezzi@gmail.com"
-__version__ = "2013-04-01"
 
 import os, sys, warnings
 import numpy as np

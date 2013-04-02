@@ -1,4 +1,4 @@
-#+TITLE: Larch plugins
+# -*- coding: utf-8 -*-
 #+AUTHOR: Mauro Rovezzi
 #+EMAIL: mauro.rovezzi@gmail.com
 
