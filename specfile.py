@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-SpecfileData object to work with SPEC files from Certified Scientific Software (http://www.certif.com/)
+SpecfileData object to work with SPEC files from Certified Scientific
+Software (http://www.certif.com/)
 
 Authors
 -------
@@ -11,11 +12,14 @@ Authors
 Requirements
 ------------
 - specfilewrapper from PyMca distribution (http://pymca.sourceforge.net/)
+- griddata from  Matplotlib distribution
 
 TODO
 ----
+- testing, testing, testing!
 - implement get_map() method to extract a 2D plane, e.g. a RIXS plane
 - better handling the scan types to create specific labels in the larch group
+- implement the case of dichroic measurements (two consecutive scans with flipped helicity)
 """
 
 import os, sys, warnings
@@ -26,6 +30,39 @@ try:
 except ImportError:
     print "Error: cannot load specfile -- PyMca broken?"
     sys.exit(1)
+
+def str2rng(rngstr):
+    """ simple utility to convert a generic string representing a
+    compact list of scans to a sorted list of integers
+
+    Example
+    -------
+    > str2rng('100, 7:9, 130:140:5, 14, 16:18:1')
+    > [7, 8, 9, 14, 16, 17, 18, 100, 130, 135, 140]
+
+    TODO
+    ----
+    - check if there are duplicates or overlaps in the output list
+    - more clever way with regular expressions
+    - move to common tools
+    """
+    _rng = []
+    for _r in rngstr.split(', '): #the space is important!
+        if (len(_r.split(',')) > 1):
+            raise NameError('The space after the comma is mandatory in {0}'.format(_r))
+        _rsplit2 = _r.split(':')
+        if (len(_rsplit2) > 3):
+            raise NameError('Too many colon in {0}'.format(_r))
+        elif (len(_rsplit2) == 3):
+            _rng.extend(range(int(_rsplit2[0]), int(_rsplit2[1])+1, int(_rsplit2[2])))
+        elif (len(_rsplit2) == 2):
+            _rng.extend(range(int(_rsplit2[0]), int(_rsplit2[1])+1))
+        else:
+            _rng.append(_r)
+    #create the sorted list and return it
+    _rngout = [int(x) for x in _rng]
+    _rngout.sort()
+    return _rngout
 
 class SpecfileData(object):
     "SpecFile object"
@@ -43,31 +80,35 @@ class SpecfileData(object):
             else:
                 self.sf = specfile.Specfile(fname) #sf = specfile file
                 print "Loaded SPEC file: {0}".format(fname)
-                print "The number of scans is: {0}".format(self.sf.scanno())
+                print "The total number of scans is: {0}".format(self.sf.scanno())
             
-    def get_scan(self, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None):
+    def get_scan(self, scan=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, scnt=None):
         """ get a single scan
 
         Parameters
         ----------
         scan : scan number to get [integer]
-        cntx : counter for x axis, motor scanned [string]
-        csig : counter for y axis, signal [string]
+        cntx : counter for x axis, motor 1 scanned [string]
+        cnty : counter for y axis, motor 2 steps [string] - used by get_map()
+        csig : counter for signal [string]
         cmon : counter for monitor/normalization [string]
         csec : counter for time in seconds [string]
         scnt : scan type [string]
  
         Returns
         -------
-        scan_datx : 1D array with x data
-        scan_daty : 1D array with y data
-        scan_mots : dictionary with motors positions for the given scan
-        
+        scan_datx : 1D array with x data (scanned axis)
+        scan_datz : 1D array with z data (intensity axis)
+        scan_mots : dictionary with all motors positions for the given scan
+                    NOTE: if cnty is given, it will return only scan_mots[cnty]
+        scan_info : dictionary with information on the scan -> NOT YET IMPLEMENTED!
         """
         if scan is None:
-            raise NameError('Provide the scan number to get [integer]')
+            raise NameError('Provide the scan number to get [integer]: between 1 and {0}'.format(self.sf.scanno()))
         if cntx is None:
             raise NameError('Provide the counter for x, the abscissa [string]')
+        if cnty is not None and not (cnty in self.sf.allmotors()):
+            raise NameError("'{0}' is not in the list of motors".format(cnty))
         if csig is None:
             raise NameError('Provide the counter for signal [string]')
         if cmon is None:
@@ -89,21 +130,110 @@ class SpecfileData(object):
                 #this condition should detect if the energy scale is KeV
                 if (self.sd.datacol(cntx).max() - self.sd.datacol(cntx).min()) < 3.0:
                     scan_datx = self.sd.datacol(cntx)*1000
+                    _xscale = 1000.0
             else:
                 scan_datx = self.sd.datacol(cntx)
+                _xscale = 1.0
         else:
             raise NameError('Provide a correct scan type string')
 
-        ## y-axis
+        ## z-axis
         if _iscps:
-            scan_daty = (self.sd.datacol(csig)/self.sd.datacol(cmon))*(np.mean(self.sd.datacol(cmon))/self.sd.datacol(csec))
+            scan_datz = self.sd.datacol(csig)/self.sd.datacol(cmon)*np.mean(self.sd.datacol(cmon))/self.sd.datacol(csec)
         else:
-            scan_daty = self.sd.datacol(csig)/self.sd.datacol(cmon)
+            scan_datz = self.sd.datacol(csig)/self.sd.datacol(cmon)
         
-        ## and the motors dictionary
+        ## the motors dictionary
         scan_mots = dict(zip(self.sf.allmotors(), self.sd.allmotorpos()))
+
+        ## collect information on the scan -> NOT IMPLEMENTED YET!!!
+        scan_info = {'x' : '...',
+                     'y' : '...',
+                     'z' : '...'}
+
+        if cnty is not None:
+            return scan_datx, scan_datz, scan_mots[cnty]*_xscale
+        else:
+            return scan_datx, scan_datz, scan_mots
+
+    def get_map(self, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, mapt=None, xystep=None):
+        """ get a map composed of many scans gridded on a uniform mesh
         
-        return scan_datx, scan_daty, scan_mots
+        Parameters
+        ----------
+        scans : scans to load in the map [string]
+                the format of the string is intended to be parsed by 'str2rng()'
+                
+        cntx : counter for x axis, motor 1 scanned [string]
+        cnty : counter for y axis, motor 2 steps [string] - used by get_map()
+        csig : counter for signal [string]
+        cmon : counter for monitor/normalization [string]
+        csec : counter for time in seconds [string]
+        mapt : map type [string]
+
+        xystep : the step siz of the XY grid
+
+        Returns
+        -------
+        xx, yy, zz : 2D arrays with the map
+
+        See also
+        --------
+        - MultipleScanToMeshPlugin in PyMca
+        """
+
+        try:
+            from matplotlib.mlab import griddata
+        except ImportError:
+            print "Error: cannot load griddata -- Matplotlib broken?"
+        
+        #check inputs - some already checked in get_scan()
+        if scans is None:
+            raise NameError("Provide a sting representing the scans to load in the map - e.g. '100, 7:15, 50:90:3'")
+        if cnty is None:
+            raise NameError("Provide the name of an existing motor")
+        if xystep is None:
+            #TODO: guess this by the scan type
+            xystep = 0.05
+            warnings.warn("No 'xystep' given, I guess an energy grid of 0.05 eV step")
+
+        #first create three 1D arrays: X, Y, Z
+        def _mot2array(motor, acopy):
+            """ to generate a copy of an array containing a constant motor value """
+            a = np.ones_like(acopy)
+            return np.multiply(a, motor)
+        
+        _counter = 0
+        for scan in str2rng(scans):
+            x, z, moty = self.get_scan(scan=scan, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec, scnt=None)
+            y = _mot2array(moty, x)
+            print "Loading scan {0} into the map...".format(scan)
+            if _counter == 0:
+                xcol = x
+                ycol = y
+                zcol = z
+            else:
+                xcol = np.append(xcol, x)
+                ycol = np.append(ycol, y)
+                zcol = np.append(zcol, z)
+            _counter += 1
+
+        #create the XY meshgrid and interpolate the Z on the grid
+        print "Gridding data..."
+        xgrid = np.linspace(xcol.min(), xcol.max(), (xcol.max()-xcol.min())/xystep)
+        ygrid = np.linspace(ycol.min(), ycol.max(), (ycol.max()-ycol.min())/xystep)
+        xx, yy = np.meshgrid(xgrid, ygrid)
+        zz = griddata(xcol, ycol, zcol, xx, yy)
+
+        if mapt == 'rixs':
+            #create also the enrgy transfer axis
+            etcol = xcol-ycol
+            etgrid = np.linspace(etcol.min(), etcol.max(), (etcol.max()-etcol.min())/xystep)
+            exx, ett = np.meshgrid(xgrid, etgrid)
+            ezz = griddata(xcol, etcol, zcol, exx, ett)
+            return xx, yy, zz, exx, ett, ezz
+        else:
+            return xx, yy, zz
 
 ### LARCH ###
 def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None, _larch=None):
@@ -124,8 +254,9 @@ def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=N
 def registerLarchPlugin():
     return ('_io', {'read_specfile_scan': spec_getscan2group})
 
-if __name__ == '__main__':
-    """ testing this class """
+### TESTS ###
+def test01():
+    """ test get_scan method """
     fname = 'specfile_test.dat'
     signal = 'zap_det_dtc'
     monitor = 'arr_I02sum'
@@ -136,5 +267,49 @@ if __name__ == '__main__':
     t = SpecfileData(fname)
     x, y, motors = t.get_scan(3, cntx=counter, csig=signal, cmon=monitor, csec=seconds)
     import matplotlib.pyplot as plt
+    plt.ion()
     plt.plot(x, y)
     plt.show()
+    raw_input("Press Enter to continue...")
+
+def test02():
+    """ test get_map method """
+    import matplotlib.pyplot as plt
+    plt.ion()
+    #plt.plot(x, y)
+    plt.show()
+    raw_input("Press Enter to continue...")
+
+
+def plot_contours(xx, yy, zz, exx, ett, ezz, nlevels):
+    '''test contours plots'''
+    fig = plt.figure()
+    ax = fig.add_subplot(121)
+    ax.set_title('gridded data')
+    cax = ax.contourf(xx, yy, zz, nlevels, cmap=cm.Paired_r)
+    ax = fig.add_subplot(122)
+    ax.set_title('energy transfer')
+    cax = ax.contourf(exx, ett, ezz, nlevels, cmap=cm.Paired_r)
+    cbar = fig.colorbar(cax)
+    plt.show()
+    
+if __name__ == '__main__':
+    """ to run some tests/examples on this class, uncomment the following """
+    #test01()
+    #test02()
+    #pass
+    fname = 'specfile_test.dat'
+    rngstr = '5:70'
+    counter = 'arr_hdh_ene'
+    motor = 'Spec.Energy'
+    motor_counter = 'arr_xes_en'
+    signal = 'zap_det_dtc'
+    monitor = 'arr_I02sum'
+    seconds = 'arr_seconds'
+    xystep = 0.05
+    t = SpecfileData(fname)
+    xx, yy, zz, exx, ett, ezz = t.get_map(scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds, mapt='rixs', xystep=xystep)
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cm
+    plot_contours(xx, yy, zz, exx, ett, ezz, 200)
+
