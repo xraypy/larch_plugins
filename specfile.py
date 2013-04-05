@@ -17,8 +17,7 @@ Requirements
 TODO
 ----
 - testing, testing, testing!
-- implement get_map() method to extract a 2D plane, e.g. a RIXS plane
-- better handling the scan types to create specific labels in the larch group
+- scan_info to create specific labels in the larch group
 - implement the case of dichroic measurements (two consecutive scans with flipped helicity)
 """
 
@@ -49,7 +48,7 @@ def str2rng(rngstr):
     _rng = []
     for _r in rngstr.split(', '): #the space is important!
         if (len(_r.split(',')) > 1):
-            raise NameError('The space after the comma is mandatory in {0}'.format(_r))
+            raise NameError('The space after comma(s) is mandatory in {0}'.format(_r))
         _rsplit2 = _r.split(':')
         if (len(_rsplit2) > 3):
             raise NameError('Too many colon in {0}'.format(_r))
@@ -156,48 +155,29 @@ class SpecfileData(object):
         else:
             return scan_datx, scan_datz, scan_mots
 
-    def get_map(self, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, mapt=None, xystep=None):
-        """ get a map composed of many scans gridded on a uniform mesh
+    def get_map(self, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None):
+        """ get a map composed of many scans repeated at different position of a given motor
         
         Parameters
         ----------
         scans : scans to load in the map [string]
                 the format of the string is intended to be parsed by 'str2rng()'
-                
         cntx : counter for x axis, motor 1 scanned [string]
-        cnty : counter for y axis, motor 2 steps [string] - used by get_map()
+        cnty : counter for y axis, motor 2 steps [string]
         csig : counter for signal [string]
         cmon : counter for monitor/normalization [string]
         csec : counter for time in seconds [string]
-        mapt : map type [string]
-
-        xystep : the step siz of the XY grid
 
         Returns
         -------
-        xx, yy, zz : 2D arrays with the map
-
-        See also
-        --------
-        - MultipleScanToMeshPlugin in PyMca
+        xcol, ycol, zcol : 1D arrays representing the map
         """
-
-        try:
-            from matplotlib.mlab import griddata
-        except ImportError:
-            print "Error: cannot load griddata -- Matplotlib broken?"
-        
         #check inputs - some already checked in get_scan()
         if scans is None:
             raise NameError("Provide a sting representing the scans to load in the map - e.g. '100, 7:15, 50:90:3'")
         if cnty is None:
             raise NameError("Provide the name of an existing motor")
-        if xystep is None:
-            #TODO: guess this by the scan type
-            xystep = 0.05
-            warnings.warn("No 'xystep' given, I guess an energy grid of 0.05 eV step")
 
-        #first create three 1D arrays: X, Y, Z
         def _mot2array(motor, acopy):
             """ to generate a copy of an array containing a constant motor value """
             a = np.ones_like(acopy)
@@ -218,6 +198,31 @@ class SpecfileData(object):
                 zcol = np.append(zcol, z)
             _counter += 1
 
+        return xcol, ycol, zcol
+
+    def grid_map(self, xcol, ycol, zcol, xystep=None):
+        """ grid (X, Y, Z) 1D data on a 2D regular mesh 
+        
+        Parameters
+        ----------
+        xcol, ycol, zcol : 1D arrays repesenting the map (z is the intensity)
+        xystep : the step size of the XY grid
+
+        Returns
+        -------
+        xx, yy, zz : 2D arrays with the gridded map
+
+        See also
+        --------
+        - MultipleScanToMeshPlugin in PyMca
+        """
+        try:
+            from matplotlib.mlab import griddata
+        except ImportError:
+            print "Error: cannot load griddata -- Matplotlib broken?"
+        if xystep is None:
+            xystep = 0.05
+            warnings.warn("'xystep' not given: using a default value of {0}".format(xystep))
         #create the XY meshgrid and interpolate the Z on the grid
         print "Gridding data..."
         xgrid = np.linspace(xcol.min(), xcol.max(), (xcol.max()-xcol.min())/xystep)
@@ -225,15 +230,7 @@ class SpecfileData(object):
         xx, yy = np.meshgrid(xgrid, ygrid)
         zz = griddata(xcol, ycol, zcol, xx, yy)
 
-        if mapt == 'rixs':
-            #create also the enrgy transfer axis
-            etcol = xcol-ycol
-            etgrid = np.linspace(etcol.min(), etcol.max(), (etcol.max()-etcol.min())/xystep)
-            exx, ett = np.meshgrid(xgrid, etgrid)
-            ezz = griddata(xcol, etcol, zcol, exx, ett)
-            return xx, yy, zz, exx, ett, ezz
-        else:
-            return xx, yy, zz
+        return xx, yy, zz
 
 ### LARCH ###
 def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None, _larch=None):
@@ -308,7 +305,10 @@ if __name__ == '__main__':
     seconds = 'arr_seconds'
     xystep = 0.05
     t = SpecfileData(fname)
-    xx, yy, zz, exx, ett, ezz = t.get_map(scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds, mapt='rixs', xystep=xystep)
+    xcol, ycol, zcol = t.get_map(scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds)
+    etcol = xcol-ycol
+    xx, yy, zz = t.grid_map(xcol, ycol, zcol, xystep=xystep)
+    exx, ett, ezz = t.grid_map(xcol, etcol, zcol, xystep=xystep)
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
     plot_contours(xx, yy, zz, exx, ett, ezz, 200)
