@@ -234,22 +234,44 @@ class SpecfileData(object):
 
 ### LARCH ###
 def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None, _larch=None):
-    """simple mapping of SpecfileData to larch groups"""
+    """simple mapping of SpecfileData.get_scan() to larch groups"""
     if _larch is None:
         raise Warning("larch broken?")
 
-    specscan = SpecfileData(fname)
+    s = SpecfileData(fname)
     group = _larch.symtable.create_group()
     group.__name__ = 'SPEC data file %s' % fname
-    x, y, motors = specscan.get_scan(scan, cntx, csig, cmon, csec, scnt)
+    x, y, motors = s.get_scan(scan=scan, cntx=cntx, csig=csig, cmon=cmon, csec=csec, scnt=scnt)
     setattr(group, 'x', x)
     setattr(group, 'y', y)
     setattr(group, 'motors', motors)
 
     return group
 
+def spec_getmap2group(fname, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, xystep=None, _larch=None):
+    """simple mapping of SpecfileData.get_map() to larch groups"""
+    if _larch is None:
+        raise Warning("larch broken?")
+
+    s = SpecfileData(fname)
+    group = _larch.symtable.create_group()
+    group.__name__ = 'SPEC data file %s' % fname
+    x, y, z = s.get_map(scans=scans, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec)
+    setattr(group, 'x', x)
+    setattr(group, 'y', y)
+    setattr(group, 'z', z)
+
+    xx, yy, zz = s.grid_map(x, y, z, xystep=xystep)
+    setattr(group, 'xx', xx)
+    setattr(group, 'yy', yy)
+    setattr(group, 'zz', zz)
+
+    return group
+
 def registerLarchPlugin():
-    return ('_io', {'read_specfile_scan': spec_getscan2group})
+    return ('_io', {'read_specfile_scan': spec_getscan2group,
+                    'read_specfile_map' : spec_getmap2group
+                    } )
 
 ### TESTS ###
 def test01():
@@ -269,32 +291,10 @@ def test01():
     plt.show()
     raw_input("Press Enter to continue...")
 
-def test02():
+def test02(nlevels):
     """ test get_map method """
     import matplotlib.pyplot as plt
-    plt.ion()
-    #plt.plot(x, y)
-    plt.show()
-    raw_input("Press Enter to continue...")
-
-
-def plot_contours(xx, yy, zz, exx, ett, ezz, nlevels):
-    '''test contours plots'''
-    fig = plt.figure()
-    ax = fig.add_subplot(121)
-    ax.set_title('gridded data')
-    cax = ax.contourf(xx, yy, zz, nlevels, cmap=cm.Paired_r)
-    ax = fig.add_subplot(122)
-    ax.set_title('energy transfer')
-    cax = ax.contourf(exx, ett, ezz, nlevels, cmap=cm.Paired_r)
-    cbar = fig.colorbar(cax)
-    plt.show()
-    
-if __name__ == '__main__':
-    """ to run some tests/examples on this class, uncomment the following """
-    #test01()
-    #test02()
-    #pass
+    import matplotlib.cm as cm
     fname = 'specfile_test.dat'
     rngstr = '5:70'
     counter = 'arr_hdh_ene'
@@ -309,7 +309,21 @@ if __name__ == '__main__':
     etcol = xcol-ycol
     xx, yy, zz = t.grid_map(xcol, ycol, zcol, xystep=xystep)
     exx, ett, ezz = t.grid_map(xcol, etcol, zcol, xystep=xystep)
-    import matplotlib.pyplot as plt
-    import matplotlib.cm as cm
-    plot_contours(xx, yy, zz, exx, ett, ezz, 200)
+    fig = plt.figure()
+    ax = fig.add_subplot(121)
+    ax.set_title('gridded data')
+    cax = ax.contourf(xx, yy, zz, nlevels, cmap=cm.Paired_r)
+    ax = fig.add_subplot(122)
+    ax.set_title('energy transfer')
+    cax = ax.contourf(exx, ett, ezz, nlevels, cmap=cm.Paired_r)
+    cbar = fig.colorbar(cax)
+    plt.show()
+    raw_input("Press Enter to continue...")
+    
+if __name__ == '__main__':
+    """ to run some tests/examples on this class, uncomment the following """
+    #test01()
+    #test02(100)
+    pass
+
 

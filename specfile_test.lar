@@ -1,4 +1,9 @@
 #LARCH script to test the specfile plugin
+
+#NOTE: 'specfile.py' should be placed in the Larch plugins folder, either:
+#      $HOME/.larch/plugins/ or /usr/local/share/larch/plugins on Unix
+#      C:\Users\ME\larch\plugins or C:\Program Files\larch\plugins on Windows
+
 add_plugin('specfile')
 fname = "specfile_test.dat"
 counter = "arr_hdh_ene"
@@ -6,5 +11,11 @@ signal = "zap_det_dtc"
 monitor = "arr_I02sum"
 seconds = "arr_seconds"
 scan = 3
-g = read_specfile_scan(fname, scan=scan, cntx=counter, csig=signal, cmon=monitor, csec=seconds)
-plot(g.x, g.y)
+g1 = read_specfile_scan(fname, scan=scan, cntx=counter, csig=signal, cmon=monitor, csec=seconds)
+plot(g1.x, g1.y, win=1, title='reading a single scan SPEC file')
+
+motor = 'Spec.Energy'
+rngstr = '5:70'
+xystep = 0.05
+g2 = read_specfile_map(fname, scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds, xystep=xystep)
+contour(g2.zz, x=g2.x, y=g2.y, colormap='Spectral', nlevels=200, win=2, title='reading many scans from SPEC file')
