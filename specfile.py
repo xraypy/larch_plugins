@@ -230,7 +230,7 @@ class SpecfileData(object):
         xx, yy = np.meshgrid(xgrid, ygrid)
         zz = griddata(xcol, ycol, zcol, xx, yy)
 
-        return xx, yy, zz
+        return xgrid, ygrid, zz
 
 ### LARCH ###
 def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None, _larch=None):
@@ -256,14 +256,10 @@ def spec_getmap2group(fname, scans=None, cntx=None, cnty=None, csig=None, cmon=N
     s = SpecfileData(fname)
     group = _larch.symtable.create_group()
     group.__name__ = 'SPEC data file %s' % fname
-    x, y, z = s.get_map(scans=scans, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec)
+    xcol, ycol, zcol = s.get_map(scans=scans, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec)
+    x, y, zz = s.grid_map(xcol, ycol, zcol, xystep=xystep)
     setattr(group, 'x', x)
     setattr(group, 'y', y)
-    setattr(group, 'z', z)
-
-    xx, yy, zz = s.grid_map(x, y, z, xystep=xystep)
-    setattr(group, 'xx', xx)
-    setattr(group, 'yy', yy)
     setattr(group, 'zz', zz)
 
     return group
@@ -307,15 +303,15 @@ def test02(nlevels):
     t = SpecfileData(fname)
     xcol, ycol, zcol = t.get_map(scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds)
     etcol = xcol-ycol
-    xx, yy, zz = t.grid_map(xcol, ycol, zcol, xystep=xystep)
-    exx, ett, ezz = t.grid_map(xcol, etcol, zcol, xystep=xystep)
+    x, y, zz = t.grid_map(xcol, ycol, zcol, xystep=xystep)
+    ex, et, ezz = t.grid_map(xcol, etcol, zcol, xystep=xystep)
     fig = plt.figure()
     ax = fig.add_subplot(121)
     ax.set_title('gridded data')
-    cax = ax.contourf(xx, yy, zz, nlevels, cmap=cm.Paired_r)
+    cax = ax.contourf(x, y, zz, nlevels, cmap=cm.Paired_r)
     ax = fig.add_subplot(122)
     ax.set_title('energy transfer')
-    cax = ax.contourf(exx, ett, ezz, nlevels, cmap=cm.Paired_r)
+    cax = ax.contourf(ex, et, ezz, nlevels, cmap=cm.Paired_r)
     cbar = fig.colorbar(cax)
     plt.show()
     raw_input("Press Enter to continue...")
