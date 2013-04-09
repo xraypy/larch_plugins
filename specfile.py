@@ -16,9 +16,12 @@ Requirements
 
 TODO
 ----
-- testing, testing, testing!
-- scan_info to create specific labels in the larch group
+- testing!
 - implement the case of dichroic measurements (two consecutive scans with flipped helicity)
+
+Known Problems
+--------------
+- wrong normalization for get_map!!!
 """
 
 import os, sys, warnings
@@ -81,7 +84,7 @@ class SpecfileData(object):
                 print "Loaded SPEC file: {0}".format(fname)
                 print "The total number of scans is: {0}".format(self.sf.scanno())
             
-    def get_scan(self, scan=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, scnt=None):
+    def get_scan(self, scan=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, scnt=None, norm=None):
         """ get a single scan
 
         Parameters
@@ -93,6 +96,10 @@ class SpecfileData(object):
         cmon : counter for monitor/normalization [string]
         csec : counter for time in seconds [string]
         scnt : scan type [string]
+        norm : normalization [string]
+               'area' -> scan_datz = scan_datz/np.trapz(scan_datz)
+               'max-min' -> scan_datz = scan_datz/(np.max(scan_datz)-np.min(scan_datz))
+               'sum' -> scan_datz = scan_datz/np.sum(z)
  
         Returns
         -------
@@ -130,32 +137,55 @@ class SpecfileData(object):
                 if (self.sd.datacol(cntx).max() - self.sd.datacol(cntx).min()) < 3.0:
                     scan_datx = self.sd.datacol(cntx)*1000
                     _xscale = 1000.0
+                    _xlabel = "energy, eV"
             else:
                 scan_datx = self.sd.datacol(cntx)
                 _xscale = 1.0
+                _xlabel = "energy, KeV"
         else:
-            raise NameError('Provide a correct scan type string')
+            raise NameError("Provide a correct scan type string")
+
 
         ## z-axis
         if _iscps:
             scan_datz = self.sd.datacol(csig)/self.sd.datacol(cmon)*np.mean(self.sd.datacol(cmon))/self.sd.datacol(csec)
+            _zlabel = "signal/monitor, per seconds"
         else:
             scan_datz = self.sd.datacol(csig)/self.sd.datacol(cmon)
+            _zlabel = "signal/monitor"
+
+        ### z-axis normalization, if required
+        if norm is not None:
+            _zlabel = "{0} norm by {1}".format(_zlabel, norm)
+            if norm == "area":
+                scan_datz = scan_datz/np.trapz(scan_datz)
+            elif norm == "max-min":
+                scan_datz = scan_datz/(np.max(scan_datz)-np.min(scan_datz))
+            elif norm == "sum":
+                scan_datz = scan_datz/np.sum(scan_datz)
+            else:
+                raise NameError("Provide a correct normalization type string")
         
         ## the motors dictionary
         scan_mots = dict(zip(self.sf.allmotors(), self.sd.allmotorpos()))
 
-        ## collect information on the scan -> NOT IMPLEMENTED YET!!!
-        scan_info = {'x' : '...',
-                     'y' : '...',
-                     'z' : '...'}
+        ## y-axis
+        if cnty is not None:
+            _ylabel = "motor {0} at {1}".format(cnty, scan_mots[cnty])
+        else:
+            _ylabel = _zlabel
+
+        ## collect information on the scan
+        scan_info = {'xlabel' : _xlabel,
+                     'ylabel' : _ylabel,
+                     'zlabel' : _zlabel}
 
         if cnty is not None:
             return scan_datx, scan_datz, scan_mots[cnty]*_xscale
         else:
-            return scan_datx, scan_datz, scan_mots
+            return scan_datx, scan_datz, scan_mots, scan_info
 
-    def get_map(self, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None):
+    def get_map(self, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, norm=None):
         """ get a map composed of many scans repeated at different position of a given motor
         
         Parameters
@@ -167,6 +197,7 @@ class SpecfileData(object):
         csig : counter for signal [string]
         cmon : counter for monitor/normalization [string]
         csec : counter for time in seconds [string]
+        norm : normalization [string]
 
         Returns
         -------
@@ -185,7 +216,7 @@ class SpecfileData(object):
         
         _counter = 0
         for scan in str2rng(scans):
-            x, z, moty = self.get_scan(scan=scan, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec, scnt=None)
+            x, z, moty = self.get_scan(scan=scan, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec, scnt=None, norm=norm)
             y = _mot2array(moty, x)
             print "Loading scan {0} into the map...".format(scan)
             if _counter == 0:
@@ -233,7 +264,7 @@ class SpecfileData(object):
         return xgrid, ygrid, zz
 
 ### LARCH ###
-def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None, _larch=None):
+def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None, norm=None, _larch=None):
     """simple mapping of SpecfileData.get_scan() to larch groups"""
     if _larch is None:
         raise Warning("larch broken?")
@@ -241,14 +272,15 @@ def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=N
     s = SpecfileData(fname)
     group = _larch.symtable.create_group()
     group.__name__ = 'SPEC data file %s' % fname
-    x, y, motors = s.get_scan(scan=scan, cntx=cntx, csig=csig, cmon=cmon, csec=csec, scnt=scnt)
+    x, y, motors, infos = s.get_scan(scan=scan, cntx=cntx, csig=csig, cmon=cmon, csec=csec, scnt=scnt, norm=norm)
     setattr(group, 'x', x)
     setattr(group, 'y', y)
     setattr(group, 'motors', motors)
+    setattr(group, 'infos', infos)
 
     return group
 
-def spec_getmap2group(fname, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, xystep=None, _larch=None):
+def spec_getmap2group(fname, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, xystep=None, norm=None, _larch=None):
     """simple mapping of SpecfileData.get_map() to larch groups"""
     if _larch is None:
         raise Warning("larch broken?")
@@ -256,7 +288,7 @@ def spec_getmap2group(fname, scans=None, cntx=None, cnty=None, csig=None, cmon=N
     s = SpecfileData(fname)
     group = _larch.symtable.create_group()
     group.__name__ = 'SPEC data file %s' % fname
-    xcol, ycol, zcol = s.get_map(scans=scans, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec)
+    xcol, ycol, zcol = s.get_map(scans=scans, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec, norm=norm)
     x, y, zz = s.grid_map(xcol, ycol, zcol, xystep=xystep)
     setattr(group, 'x', x)
     setattr(group, 'y', y)
@@ -279,15 +311,22 @@ def test01():
     counter = 'arr_hdh_ene'
     motor = 'Spec.Energy'
     motor_counter = 'arr_xes_en'
+    scan = 3
     t = SpecfileData(fname)
-    x, y, motors = t.get_scan(3, cntx=counter, csig=signal, cmon=monitor, csec=seconds)
-    import matplotlib.pyplot as plt
-    plt.ion()
-    plt.plot(x, y)
-    plt.show()
-    raw_input("Press Enter to continue...")
+    for norm in [None, "area", "max-min", "sum"]:
+        x, y, motors, infos = t.get_scan(scan, cntx=counter, csig=signal, cmon=monitor, csec=seconds, norm=norm)
+        print "Read scan {0} with normalization {1}".format(scan, norm)
+        import matplotlib.pyplot as plt
+        plt.ion()
+        plt.figure(num=test01.__doc__)
+        plt.plot(x, y)
+        plt.xlabel(infos["xlabel"])
+        plt.ylabel(infos["ylabel"])
+        plt.show()
+        raw_input("Press Enter to close the plot window and continue...")
+        plt.close()
 
-def test02(nlevels):
+def test02(nlevels, norm):
     """ test get_map method """
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
@@ -301,11 +340,11 @@ def test02(nlevels):
     seconds = 'arr_seconds'
     xystep = 0.05
     t = SpecfileData(fname)
-    xcol, ycol, zcol = t.get_map(scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds)
+    xcol, ycol, zcol = t.get_map(scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds, norm=norm)
     etcol = xcol-ycol
     x, y, zz = t.grid_map(xcol, ycol, zcol, xystep=xystep)
     ex, et, ezz = t.grid_map(xcol, etcol, zcol, xystep=xystep)
-    fig = plt.figure()
+    fig = plt.figure(num=test02.__doc__)
     ax = fig.add_subplot(121)
     ax.set_title('gridded data')
     cax = ax.contourf(x, y, zz, nlevels, cmap=cm.Paired_r)
@@ -314,12 +353,13 @@ def test02(nlevels):
     cax = ax.contourf(ex, et, ezz, nlevels, cmap=cm.Paired_r)
     cbar = fig.colorbar(cax)
     plt.show()
-    raw_input("Press Enter to continue...")
+    raw_input("Press Enter to close the plot and continue...")
+    plt.close()
     
 if __name__ == '__main__':
     """ to run some tests/examples on this class, uncomment the following """
     #test01()
-    #test02(100)
+    #test02(100, 'area')
     pass
 
 

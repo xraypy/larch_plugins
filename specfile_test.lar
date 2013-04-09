@@ -11,11 +11,18 @@ signal = "zap_det_dtc"
 monitor = "arr_I02sum"
 seconds = "arr_seconds"
 scan = 3
-g1 = read_specfile_scan(fname, scan=scan, cntx=counter, csig=signal, cmon=monitor, csec=seconds)
-plot(g1.x, g1.y, win=1, title='reading a single scan SPEC file')
+for norm in [None, "area", "max-min", "sum"]:
+    g1 = read_specfile_scan(fname, scan=scan, cntx=counter, csig=signal, cmon=monitor, csec=seconds, norm=norm)
+    print "Read scan {0} with normalization {1}".format(scan, norm)
+    newplot(g1.x, g1.y, win=1, title='reading a single scan from SPEC file', xlabel=g1.infos["xlabel"], ylabel=g1.infos["ylabel"])
+    raw_input("Press Enter to continue")
+#endfor
 
-motor = 'Spec.Energy'
-rngstr = '5:70'
-xystep = 0.05
-g2 = read_specfile_map(fname, scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds, xystep=xystep)
-contour(g2.zz, x=g2.x, y=g2.y, colormap='Spectral', nlevels=200, win=2, title='reading many scans from SPEC file')
+_next = raw_input("Do you want to run the next test (y/n)? ")
+if _next == 'y':
+    motor = 'Spec.Energy'
+    rngstr = '5:70'
+    xystep = 0.05
+    g2 = read_specfile_map(fname, scans=rngstr, cntx=counter, cnty=motor, csig=signal, cmon=monitor, csec=seconds, xystep=xystep)
+    contour(g2.zz, x=g2.x, y=g2.y, colormap='Spectral', nlevels=200, win=2, title='reading many scans from SPEC file')
+#endif
