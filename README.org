@@ -33,6 +33,60 @@
     and maintenance. (2) is a nice project too but cannot handle
     motors names that include a dot, as e.g. 'Mono.Energy'.
 
+** TODO Pymca
+
+   To let Larch use [[http://pymca.souceforge.net][PyMca]] as an external library and/or interact with it.
+
+*** Notes (a.k.a PyMca's HowTo)
+
+**** Full PyMca layout from command line
+
+#+begin_src python
+from PyMca import PyMcaMain
+w = PyMcaMain.PyMcaMain()
+
+#to access the scan window
+w.scanwindow.addCurve(...) #see below for more options
+#+end_src
+     
+**** Plotting window object
+
+#+begin_src python
+from PyMca import ScanWindow()
+w = ScanWindow.ScanWindow()
+w.show()
+w.addCurve(x, y, legend, info) # [x, y] is your data array
+##The complete method signature is:
+##addCurve(self, x, y, legend=None, info=None, replace=False, replot=True)
+##info : dictionary with info on the curve
+
+# To get back the data objects from the plot in order to perfom some analysis
+w.getActiveCurve() #only the active curve
+w.getAllCurves() #all plotted curves
+#+end_src
+
+**** Accessing data widget
+
+#+begin_src python
+from PyMca import QDataSource
+from PyMca import QSpecfileWidget
+w = QSpecfileWidget.QSpecFileWidget()
+d = QDataSource.QDataSource(YOUR_FILE_NAME_STRING)
+w.setData(d)
+w.show()
+#+end_src
+
+**** Call a protected method
+     An example on how to call a protected method, that is, a method starting with double underscore ~__~:
+
+#+BEGIN_SRC python
+from PyMca import ScanWindow
+w = ScanWindow.ScanWindow()
+#...
+w.__ScanWindow__SimpleOperation("save")
+w.__ScanWindow__QSimpleOperation("save")
+#+END_SRC
+
 * Future plugins
 
   Here a list (_without order_) of future plugins that could help the
@@ -44,4 +98,30 @@
   - implement IAD (integral of the absolute difference) data analysis
     for XES
   - interacting with theoretical softwares: FDMNES, FEFF, GPAW, ASE
-    
+
+** Python projects for spectroscopists
+
+   I keep in the following a not exhaustive and not ordered list of
+   nice Python-based projects useful for daily work and to get
+   inspiration for future plugins:
+
+   - [[http://code.google.com/p/prestopronto/][Prestopronto]] : developed at ESRF-ID24/BM23; it uses the old
+     Ifeffit Version 1 Python wrapper.
+   - [[https://github.com/tschoonj/xraylib][XrayLib]] : all the X-ray tables at your fingers!
+   - [[http://packages.python.org/quantities/][Quantities]] : something like XrayLib... not tested yet.
+   - [[http://fityk.nieto.pl/][Fityk]] : one of the best open source peak fitting software that
+     has a Python wrapper that just rocks!
+   - [[https://forge.epn-campus.eu/projects/ppm][PPM]] : X-ray reflectivity by Alessandro Mirone (ESRF).
+   - [[http://www.esrf.eu/computing/scientific/CARD/CARD.html][CARD]] : ReflEXAFS data analysis using PPM and Ifeffit1.
+   - [[https://forge.epn-campus.eu/projects/shadow3][Shadow3]] : it has a Python wrapper.
+   - [[http://www.cells.es/static/Files/Experiments/CLAESS/xrt/][XRayTracer]] : powerful Python x-ray tracing engine by Konstantin
+     Klementiev at ALBA.
+   - [[http://code.google.com/p/guiqwt/][GuiQWT]] : if you are not happy with PyMca!
+   - [[https://wiki.fysik.dtu.dk/ase/][ASE]] : atomistic calculations made easy.
+   - [[https://wiki.fysik.dtu.dk/gpaw/][GPAW]] : DFT in Python.
+   - [[http://pyquante.sourceforge.net/][PyQuante]] : to understand Quantum Chemistry practical methods or
+     solve single/two electrons integrals; unfortunately the project
+     seems not developed anymore.
+   - [[http://www.sagemath.org/][SAGE]] : only for mathematicians.
+   - [[http://sympy.org/en/index.html][SymPy]] : symbolic mathematics for physicists.
+
