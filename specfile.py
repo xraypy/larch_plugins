@@ -16,12 +16,9 @@ Requirements
 
 TODO
 ----
-- testing!
+- correct wrong normalization for get_map!!!
 - implement the case of dichroic measurements (two consecutive scans with flipped helicity)
 
-Known Problems
---------------
-- wrong normalization for get_map!!!
 """
 
 import os, sys, warnings
@@ -33,46 +30,50 @@ except ImportError:
     print "Error: cannot load specfile -- PyMca broken?"
     sys.exit(1)
 
-def str2rng(rngstr):
+def _str2rng(rngstr):
     """ simple utility to convert a generic string representing a
     compact list of scans to a sorted list of integers
 
     Example
     -------
-    > str2rng('100, 7:9, 130:140:5, 14, 16:18:1')
+    > _str2rng('100, 7:9, 130:140:5, 14, 16:18:1')
     > [7, 8, 9, 14, 16, 17, 18, 100, 130, 135, 140]
 
-    TODO
-    ----
-    - check if there are duplicates or overlaps in the output list
-    - more clever way with regular expressions
-    - move to common tools
     """
     _rng = []
     for _r in rngstr.split(', '): #the space is important!
         if (len(_r.split(',')) > 1):
             raise NameError('The space after comma(s) is mandatory in {0}'.format(_r))
         _rsplit2 = _r.split(':')
-        if (len(_rsplit2) > 3):
-            raise NameError('Too many colon in {0}'.format(_r))
-        elif (len(_rsplit2) == 3):
-            _rng.extend(range(int(_rsplit2[0]), int(_rsplit2[1])+1, int(_rsplit2[2])))
-        elif (len(_rsplit2) == 2):
-            _rng.extend(range(int(_rsplit2[0]), int(_rsplit2[1])+1))
-        else:
+        if (len(_rsplit2) == 1):
             _rng.append(_r)
-    #create the sorted list and return it
+        elif (len(_rsplit2) == 2 or len(_rsplit2) == 3):
+            if len(_rsplit2) == 2 :
+                _rsplit2.append('1')
+            if (_rsplit2[0] == _rsplit2[1]):
+                raise NameError("Wrong range '{0}' in string '{1}'".format(_r, rngstr))
+            if (int(_rsplit2[0]) > int(_rsplit2[1])):
+                raise NameError("Wrong range '{0}' in string '{1}'".format(_r, rngstr))
+            _rng.extend(range(int(_rsplit2[0]), int(_rsplit2[1])+1, int(_rsplit2[2])))
+        else:
+            raise NameError('Too many colon in {0}'.format(_r))
+
+    #create the sorted list and return it (removing the duplicates)
     _rngout = [int(x) for x in _rng]
     _rngout.sort()
-    return _rngout
+    return list(set(_rngout))
+
+def _mot2array(motor, acopy):
+    """simple utility to generate a copy of an array containing a constant value (e.g. motor position)"""
+    a = np.ones_like(acopy)
+    return np.multiply(a, motor)
 
 class SpecfileData(object):
     "SpecFile object"
-    def __init__(self, fname=None):
+    def __init__(self, fname=None, cntx=1, cnty=None, csig=None, cmon=None, csec=None, norm=None):
         """reads the given specfile"""
-        #TODO: separate fname from working dir (wdir)
         if fname is None:
-            raise NameError('Please, provide a SPEC data file to load!')
+            raise NameError("Provide a SPEC data file to load with full path")
         elif not os.path.isfile(fname):
             raise OSError("File not found: '%s'" % fname)
         else:
@@ -82,9 +83,16 @@ class SpecfileData(object):
             else:
                 self.sf = specfile.Specfile(fname) #sf = specfile file
                 print "Loaded SPEC file: {0}".format(fname)
-                print "The total number of scans is: {0}".format(self.sf.scanno())
-            
-    def get_scan(self, scan=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, scnt=None, norm=None):
+                #print "The total number of scans is: {0}".format(self.sf.scanno())
+        #set common attributes
+        self.cntx = cntx
+        self.cnty = cnty
+        self.csig = csig
+        self.cmon = cmon
+        self.csec = csec
+        self.norm = norm
+        
+    def get_scan(self, scan=None, scnt=None, **kws):
         """ get a single scan
 
         Parameters
@@ -109,6 +117,14 @@ class SpecfileData(object):
                     NOTE: if cnty is given, it will return only scan_mots[cnty]
         scan_info : dictionary with information on the scan -> NOT YET IMPLEMENTED!
         """
+        #get keywords arguments
+        cntx = kws.get('cntx', self.cntx)
+        cnty = kws.get('cnty', self.cnty)
+        csig = kws.get('csig', self.csig)
+        cmon = kws.get('cmon', self.cmon)
+        csec = kws.get('csec', self.csec)
+        norm = kws.get('norm', self.norm)
+        #input checks
         if scan is None:
             raise NameError('Provide the scan number to get [integer]: between 1 and {0}'.format(self.sf.scanno()))
         if cntx is None:
@@ -127,12 +143,18 @@ class SpecfileData(object):
 
         #select the given scan number
         self.sd = self.sf.select(str(scan)) #sd = specfile data
+
+        #the case cntx is not given it is taken as the first counter by default
+        if cntx == 1:
+            _cntx = self.sd.alllabels()[0]
+        else:
+            _cntx = cntx
         
         ## x-axis
         if scnt is None:
             #try to guess the scan type if it is not given
             #this condition should work in case of an energy scan
-            if ('ene' in cntx.lower()):
+            if ('ene' in _cntx.lower()):
                 #this condition should detect if the energy scale is KeV
                 if (self.sd.datacol(cntx).max() - self.sd.datacol(cntx).min()) < 3.0:
                     scan_datx = self.sd.datacol(cntx)*1000
@@ -143,8 +165,7 @@ class SpecfileData(object):
                 _xscale = 1.0
                 _xlabel = "energy, KeV"
         else:
-            raise NameError("Provide a correct scan type string")
-
+            raise NameError("Wrong scan type string")
 
         ## z-axis
         if _iscps:
@@ -185,37 +206,34 @@ class SpecfileData(object):
         else:
             return scan_datx, scan_datz, scan_mots, scan_info
 
-    def get_map(self, scans=None, cntx=None, cnty=None, csig=None, cmon=None, csec=None, norm=None):
+    def get_map(self, scans=None, **kws):
         """ get a map composed of many scans repeated at different position of a given motor
         
         Parameters
         ----------
         scans : scans to load in the map [string]
-                the format of the string is intended to be parsed by 'str2rng()'
-        cntx : counter for x axis, motor 1 scanned [string]
-        cnty : counter for y axis, motor 2 steps [string]
-        csig : counter for signal [string]
-        cmon : counter for monitor/normalization [string]
-        csec : counter for time in seconds [string]
-        norm : normalization [string]
+                the format of the string is intended to be parsed by '_str2rng()'
+        **kws : see get_scan() method
 
         Returns
         -------
         xcol, ycol, zcol : 1D arrays representing the map
         """
+        #get keywords arguments
+        cntx = kws.get('cntx', self.cntx)
+        cnty = kws.get('cnty', self.cnty)
+        csig = kws.get('csig', self.csig)
+        cmon = kws.get('cmon', self.cmon)
+        csec = kws.get('csec', self.csec)
+        norm = kws.get('norm', self.norm)
         #check inputs - some already checked in get_scan()
         if scans is None:
-            raise NameError("Provide a sting representing the scans to load in the map - e.g. '100, 7:15, 50:90:3'")
+            raise NameError("Provide a string representing the scans to load in the map - e.g. '100, 7:15, 50:90:3'")
         if cnty is None:
             raise NameError("Provide the name of an existing motor")
 
-        def _mot2array(motor, acopy):
-            """ to generate a copy of an array containing a constant motor value """
-            a = np.ones_like(acopy)
-            return np.multiply(a, motor)
-        
         _counter = 0
-        for scan in str2rng(scans):
+        for scan in _str2rng(scans):
             x, z, moty = self.get_scan(scan=scan, cntx=cntx, cnty=cnty, csig=csig, cmon=cmon, csec=csec, scnt=None, norm=norm)
             y = _mot2array(moty, x)
             print "Loading scan {0} into the map...".format(scan)
@@ -241,7 +259,8 @@ class SpecfileData(object):
 
         Returns
         -------
-        xx, yy, zz : 2D arrays with the gridded map
+        xgrid, ygrid : 1D arrays giving abscissa and ordinate of the map
+        zz : 2D array with the gridded intensity map
 
         See also
         --------
@@ -262,6 +281,42 @@ class SpecfileData(object):
         zz = griddata(xcol, ycol, zcol, xx, yy)
 
         return xgrid, ygrid, zz
+
+    def get_mrg(self, scans=None, **kws):
+        """ get a merged scan (average of many scans)
+        
+        Parameters
+        ----------
+        scans : scans to load in the merge [string]
+                the format of the string is intended to be parsed by '_str2rng()'
+        **kws : see get_scan() method
+
+        Returns
+        -------
+        xmrg, zmrg : 1D arrays
+        """
+        #get keywords arguments
+        cntx = kws.get('cntx', self.cntx)
+        cnty = kws.get('cnty', self.cnty)
+        csig = kws.get('csig', self.csig)
+        cmon = kws.get('cmon', self.cmon)
+        csec = kws.get('csec', self.csec)
+        norm = kws.get('norm', self.norm)
+        #check inputs - some already checked in get_scan()
+        if scans is None:
+            raise NameError("Provide a sting representing the scans to merge - e.g. '100, 7:15, 50:90:3'")
+        
+        _ct = 0
+        xdats = {}
+        zdats = {}
+        mdats = {}
+        idats = {}
+        for scan in _str2rng(scans):
+            xdats[_ct], zdats[_ct], mdats[_ct], idats[_ct] = self.get_scan(scan=scan, cntx=cntx, cnty=None, csig=csig, cmon=cmon, csec=csec, scnt=None, norm=norm)
+            print "Loading scan {0}...".format(scan)
+            _ct += 1
+
+        return xdats, zdats, mdats, idats
 
 ### LARCH ###
 def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None, norm=None, _larch=None):
@@ -296,15 +351,22 @@ def spec_getmap2group(fname, scans=None, cntx=None, cnty=None, csig=None, cmon=N
 
     return group
 
+def str2rng(rngstr, _larch=None):
+    """larch equivalent of _str2rng()"""
+    if _larch is None:
+        raise Warning("larch broken?")
+    return _str2rng(rngstr)
+
 def registerLarchPlugin():
     return ('_io', {'read_specfile_scan': spec_getscan2group,
-                    'read_specfile_map' : spec_getmap2group
-                    } )
+                    'read_specfile_map' : spec_getmap2group,
+                    'str2rng' : str2rng
+                    })
 
 ### TESTS ###
 def test01():
     """ test get_scan method """
-    fname = 'specfile_test.dat'
+    fname = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'specfile_test.dat')
     signal = 'zap_det_dtc'
     monitor = 'arr_I02sum'
     seconds = 'arr_seconds'
@@ -330,7 +392,7 @@ def test02(nlevels, norm):
     """ test get_map method """
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
-    fname = 'specfile_test.dat'
+    fname = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'specfile_test.dat')
     rngstr = '5:70'
     counter = 'arr_hdh_ene'
     motor = 'Spec.Energy'
