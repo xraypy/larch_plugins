@@ -41,17 +41,17 @@
 
 **** Full PyMca layout from command line
 
-#+begin_src python
+#+BEGIN_SRC python
 from PyMca import PyMcaMain
 w = PyMcaMain.PyMcaMain()
 
 #to access the scan window
 w.scanwindow.addCurve(...) #see below for more options
-#+end_src
+#+END_SRC
      
 **** Plotting window object
 
-#+begin_src python
+#+BEGIN_SRC python
 from PyMca import ScanWindow()
 w = ScanWindow.ScanWindow()
 w.show()
@@ -63,18 +63,18 @@ w.addCurve(x, y, legend, info) # [x, y] is your data array
 # To get back the data objects from the plot in order to perfom some analysis
 w.getActiveCurve() #only the active curve
 w.getAllCurves() #all plotted curves
-#+end_src
+#+END_SRC
 
 **** Accessing data widget
 
-#+begin_src python
+#+BEGIN_SRC python
 from PyMca import QDataSource
 from PyMca import QSpecfileWidget
 w = QSpecfileWidget.QSpecFileWidget()
 d = QDataSource.QDataSource(YOUR_FILE_NAME_STRING)
 w.setData(d)
 w.show()
-#+end_src
+#+END_SRC
 
 **** Call a protected method
      An example on how to call a protected method, that is, a method starting with double underscore ~__~:
