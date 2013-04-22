@@ -16,6 +16,8 @@ Requirements
 
 TODO
 ----
+- get_mrg() : register the Larch method and put a test/example
+- _pymca_average() : find faster routine
 - correct wrong normalization for get_map!!!
 - implement the case of dichroic measurements (two consecutive scans with flipped helicity)
 
@@ -29,6 +31,8 @@ try:
 except ImportError:
     print "Error: cannot load specfile -- PyMca broken?"
     sys.exit(1)
+
+### UTILITIES (the class is below!)
 
 def _str2rng(rngstr):
     """ simple utility to convert a generic string representing a
@@ -68,6 +72,126 @@ def _mot2array(motor, acopy):
     a = np.ones_like(acopy)
     return np.multiply(a, motor)
 
+
+def _pymca_average(xdata0, ydata0):
+    """this is a copy of SimpleMath.average() method taken from PyMca/SimpleMath.py
+
+    Parameters
+    ----------
+    - xdata0, ydata0 : lists of arrays contaning the data to merge
+    
+    Returns
+    -------
+    - finalx, finaly : 1D arrays containing the merged data
+    """
+    #check if all the x axis are identical (no interpolation needed)
+    allthesamex = 1
+    x0 = xdata0[0]
+    for xaxis in xdata0:
+        if len(x0) == len(xaxis):
+            if np.alltrue(x0 == xaxis):
+                pass
+            else:
+                allthesamex = 0
+                break
+        else:
+            allthesamex = 0
+            break
+    #
+    if allthesamex:
+        print "The loaded data have the same x-axis => not interpolating"
+        xdata = []
+        ydata = []
+        i = 0
+        for x0 in xdata0:
+            x = np.array(x0)
+            xdata.append(x)
+            ydata.append(np.array(ydata0[i]))
+            i += 1
+        
+        finalx = np.array(x0)
+        finalx = xdata0[0]
+        finaly = np.zeros(finalx.shape, np.float)
+        i = 0
+        for x0 in xdata0:
+            finaly += ydata[i]
+            i += 1
+    else:
+        print "The loaded data do not have the same x-axis => interpolating..."
+        #sort the data
+        xdata = []
+        ydata = []
+        i = 0 
+        for x0 in xdata0:
+            x = np.array(x0)
+            i1 = np.argsort(x)
+            xdata.append(np.take(x, i1))
+            ydata.append(np.take(np.array(ydata0[i]), i1))
+            i += 1
+            
+        #get the max and the min x axis
+        xmin = xdata[0][0]
+        xmax = xdata[0][-1]
+        for x in xdata:
+            if xmin < x[0]:
+                xmin = x[0]
+            if xmax > x[-1]:
+                xmax = x[-1]
+        #take the data in between
+        x = []
+        y = []
+        i = 0
+        minimumLength = len(xdata[0])
+        for x0 in xdata:
+            i1 = np.nonzero((x0 >= xmin) & (x0 <= xmax))[0]
+            x.append(np.take(x0, i1))
+            y.append(np.take(np.array(ydata[i]), i1))
+            if len(x0) < minimumLength:
+                minimumLength = len(x0)
+            i += 1
+
+        if minimumLength < 2:
+            raise ValueError("Not enough points to take a meaningfull average")
+        #take as x axis the first
+        finalx = x[0]
+        for i in range(len(x)):
+            if x[i][0] > finalx[0]:
+                finalx = x[i] 
+        finaly = np.zeros(finalx.shape, np.float)
+        j = -1
+        allthesamex = 0
+        for p in range(len(finalx)):
+            point = finalx[p] 
+            i = 0
+            j += 1
+            try:            
+                for x0 in x:
+                    if allthesamex:
+                        finaly[p] += y[i][p]
+                    else:
+                        i1 = max(np.nonzero(x0 <= point)[0])
+                        i2 = min(np.nonzero(x0 >= point)[0])
+                        if i1 >= i2:
+                            #take the point as it is
+                            finaly[p] += y[i][i1]
+                        else:
+                            #interpolation
+                            A = (x0[i2] - point)/(x0[i2] - x0[i1])
+                            B = 1.0 - A
+                            finaly[p] += A*y[i][i1] + B*y[i][i2]
+                    i += 1
+            except:
+                break
+    if allthesamex:
+        finalx = finalx[0:]
+        finaly = finaly[0:]/len(xdata0)      
+    else:
+        finalx = finalx[0:j]
+        finaly = finaly[0:j]/len(xdata0)
+        
+    return finalx, finaly
+
+### MAIN CLASS
 class SpecfileData(object):
     "SpecFile object"
     def __init__(self, fname=None, cntx=1, cnty=None, csig=None, cmon=None, csec=None, norm=None):
@@ -304,19 +428,23 @@ class SpecfileData(object):
         norm = kws.get('norm', self.norm)
         #check inputs - some already checked in get_scan()
         if scans is None:
-            raise NameError("Provide a sting representing the scans to merge - e.g. '100, 7:15, 50:90:3'")
+            raise NameError("Provide a string representing the scans to merge - e.g. '100, 7:15, 50:90:3'")
         
         _ct = 0
-        xdats = {}
-        zdats = {}
-        mdats = {}
-        idats = {}
+        xdats = []
+        zdats = []
+        #mdats = []
+        #idats = []
         for scan in _str2rng(scans):
-            xdats[_ct], zdats[_ct], mdats[_ct], idats[_ct] = self.get_scan(scan=scan, cntx=cntx, cnty=None, csig=csig, cmon=cmon, csec=csec, scnt=None, norm=norm)
+            _x, _z, _m, _i = self.get_scan(scan=scan, cntx=cntx, cnty=None, csig=csig, cmon=cmon, csec=csec, scnt=None, norm=norm)
+            xdats.append(_x)
+            zdats.append(_z)
+            #mdats.append(_m)
+            #idats.append(_i)
             print "Loading scan {0}...".format(scan)
             _ct += 1
 
-        return xdats, zdats, mdats, idats
+        return _pymca_average(xdats, zdats)
 
 ### LARCH ###
 def spec_getscan2group(fname, scan=None, cntx=None, csig=None, cmon=None, csec=None, scnt=None, norm=None, _larch=None):
