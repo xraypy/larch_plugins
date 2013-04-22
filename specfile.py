@@ -32,6 +32,13 @@ except ImportError:
     print "Error: cannot load specfile -- PyMca broken?"
     sys.exit(1)
 
+try:
+    from PyMca import SimpleMath
+    _hasSimpleMath = True
+except ImportError:
+    print "Warning: cannot load SimpleMath -- PyMca broken? -- some features will not work!"
+    _hasSimpleMath = False
+
 ### UTILITIES (the class is below!)
 
 def _str2rng(rngstr):
@@ -73,123 +80,23 @@ def _mot2array(motor, acopy):
     return np.multiply(a, motor)
 
 
-def _pymca_average(xdata0, ydata0):
-    """this is a copy of SimpleMath.average() method taken from PyMca/SimpleMath.py
+def _pymca_average(xdats, zdats):
+    """this is a call to SimpleMath.average() method from PyMca/SimpleMath.py
 
     Parameters
     ----------
-    - xdata0, ydata0 : lists of arrays contaning the data to merge
+    - xdats, ydats : lists of arrays contaning the data to merge
     
     Returns
     -------
-    - finalx, finaly : 1D arrays containing the merged data
+    - xmrg, zmrg : 1D arrays containing the merged data
     """
-    #check if all the x axis are identical (no interpolation needed)
-    allthesamex = 1
-    x0 = xdata0[0]
-    for xaxis in xdata0:
-        if len(x0) == len(xaxis):
-            if np.alltrue(x0 == xaxis):
-                pass
-            else:
-                allthesamex = 0
-                break
-        else:
-            allthesamex = 0
-            break
-    #
-    if allthesamex:
-        print "The loaded data have the same x-axis => not interpolating"
-        xdata = []
-        ydata = []
-        i = 0
-        for x0 in xdata0:
-            x = np.array(x0)
-            xdata.append(x)
-            ydata.append(np.array(ydata0[i]))
-            i += 1
-        
-        finalx = np.array(x0)
-        finalx = xdata0[0]
-        finaly = np.zeros(finalx.shape, np.float)
-        i = 0
-        for x0 in xdata0:
-            finaly += ydata[i]
-            i += 1
+    if _hasSimpleMath is True:
+        sm = SimpleMath.SimpleMath()
+        print "Merging data (can take a while due to interpolation)..."
+        return sm.average(xdats, zdats)
     else:
-        print "The loaded data do not have the same x-axis => interpolating..."
-        #sort the data
-        xdata = []
-        ydata = []
-        i = 0 
-        for x0 in xdata0:
-            x = np.array(x0)
-            i1 = np.argsort(x)
-            xdata.append(np.take(x, i1))
-            ydata.append(np.take(np.array(ydata0[i]), i1))
-            i += 1
-            
-        #get the max and the min x axis
-        xmin = xdata[0][0]
-        xmax = xdata[0][-1]
-        for x in xdata:
-            if xmin < x[0]:
-                xmin = x[0]
-            if xmax > x[-1]:
-                xmax = x[-1]
-        #take the data in between
-        x = []
-        y = []
-        i = 0
-        minimumLength = len(xdata[0])
-        for x0 in xdata:
-            i1 = np.nonzero((x0 >= xmin) & (x0 <= xmax))[0]
-            x.append(np.take(x0, i1))
-            y.append(np.take(np.array(ydata[i]), i1))
-            if len(x0) < minimumLength:
-                minimumLength = len(x0)
-            i += 1
-
-        if minimumLength < 2:
-            raise ValueError("Not enough points to take a meaningfull average")
-        #take as x axis the first
-        finalx = x[0]
-        for i in range(len(x)):
-            if x[i][0] > finalx[0]:
-                finalx = x[i] 
-        finaly = np.zeros(finalx.shape, np.float)
-        j = -1
-        allthesamex = 0
-        for p in range(len(finalx)):
-            point = finalx[p] 
-            i = 0
-            j += 1
-            try:            
-                for x0 in x:
-                    if allthesamex:
-                        finaly[p] += y[i][p]
-                    else:
-                        i1 = max(np.nonzero(x0 <= point)[0])
-                        i2 = min(np.nonzero(x0 >= point)[0])
-                        if i1 >= i2:
-                            #take the point as it is
-                            finaly[p] += y[i][i1]
-                        else:
-                            #interpolation
-                            A = (x0[i2] - point)/(x0[i2] - x0[i1])
-                            B = 1.0 - A
-                            finaly[p] += A*y[i][i1] + B*y[i][i2]
-                    i += 1
-            except:
-                break
-    if allthesamex:
-        finalx = finalx[0:]
-        finaly = finaly[0:]/len(xdata0)      
-    else:
-        finalx = finalx[0:j]
-        finaly = finaly[0:j]/len(xdata0)
-        
-    return finalx, finaly
+        raise NameError("SimpleMath is not available -- this operation cannot be performed!")
 
 ### MAIN CLASS
 class SpecfileData(object):
